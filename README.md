@@ -22,9 +22,9 @@ Once the script is done parsing, the result stored in `parsed.csv`
 
 ## Format:
 _Some property names have changed in the Telegram export_
- - `id`: Message ID - replaced 'msg_id'
- - `from`: Sender Name - replaced 'sender'
- - `from_id`: Sender ID - replaced 'sender_id'
+ - `id`: Message ID - replaced `msg_id`
+ - `from`: Sender Name - replaced `sender`
+ - `from_id`: Sender ID - replaced `sender_id`
  - `date`: Message Date
  - `type`: Can be one of the following: `message, custom_emoji, bold, plain, underline, text, sticker, file, photo, poll, location or link`
  - `msg_content`: the text content the message, already cleaned in terms of newline and spaces; if the message was not a text (sticker, media, etc) this field will store the path pointing to the media
