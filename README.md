@@ -20,17 +20,17 @@ For each chat backup in `result.json`, a `.csv` file will be created in the same
 
 Once the script is done parsing, the result `CSV` file will have the format bellow:
 
- - ~~`msg_id`: Unique message identifier~~
  - `id`: Message ID
- - ~~`sender`: Name of the sender~~
+ - ~~`msg_id`: Unique message identifier~~
  - `from`: Sender name
- - ~~`sender_id`: the unique identifier of the sender~~
  - `from_id`: Sender ID
- - `reply_to_mesg_id`: if the message is a reply, this column will store the id of that message, or -1 otherwise
  - `date`: date time stamp of the message
- - ~~`msg_type`:  can be one of the following: `text, sticker, file, photo, poll, location or link`~~
  - `type`: Can be one of the following: `message, custom_emoji, bold, plain, underline, text, sticker, file, photo, poll, location or link`
  - `msg_content`: the text content the message, already cleaned in terms of newline and spaces; if the message was not a text (sticker, media, etc) this field will store the path pointing to the media
+ - ~~`sender`: Name of the sender~~
+ - ~~`sender_id`: the unique identifier of the sender~~
+ - ~~`reply_to_mesg_id`: Stores ID for replies, or -1 otherwise~~
+ - ~~`msg_type`: can be one of the following: `text, sticker, file, photo, poll, location or link`~~
  - ~~`has_mention`: it will be `1` if there's a mention in the text, `0` otherwise~~
  - ~~`has_email`: it will be `1` if there's a email in the text, `0` otherwise~~
  - ~~`has_phone`: it will be `1` if there's a phone contact in the message, `0` otherwise~~
