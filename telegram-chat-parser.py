@@ -1,176 +1,229 @@
-"""
-file:         telegram-chat-parser.py
-author:       Artur Rodrigues Rocha Neto
-email:        artur.rodrigues26@gmail.com
-github:       https://github.com/keizerzilla
-created:      23/12/2020
-description:  Script to parse a Telegram chat history JSON file into a tabular format (CSV).
-requirements: Python 3.x
-"""
-
 import re
 import sys
 import csv
 import json
+import os
+import string
 from datetime import datetime
-
+from pathvalidate import sanitize_filename
+from emoji import replace_emoji
+import logging
+from argparse import ArgumentParser
 
 COLUMNS = [
     "msg_id",
-    "sender",
-    "sender_id",
-    "reply_to_msg_id",
     "date",
     "msg_type",
-    "msg_content",
-    "has_mention",
-    "has_email",
-    "has_phone",
-    "has_hashtag",
-    "is_bot_command",
+    "strain_name",
+    "type",
+    "genetics",
+    "crosses",
+    "flavor"
 ]
 
-FILE_TYPES = [
-    "animation",
-    "video_file",
-    "video_message",
-    "voice_message",
-    "audio_file",
-]
+class TelegramChatParser:
+    def __init__(self):
+        self.photos_found = set(os.listdir("photos"))
+        self.videos_found = set(os.listdir("video_files"))
+        self.photos_renamed = set()
+        self.videos_renamed = set()
+        self.message_ids = set()
 
-MENTION_TYPES = [
-    "mention",
-    "mention_name",
-]
+    def generate_filename(strain_name, type_info, quality, config):
+      """Generates a filename based on user-defined configuration.
 
-NULL_NAME_COUNTER = 0
+      Args:
+        strain_name: The strain name.
+        type_info: Information extracted from the "Type" field.
+        quality: Quality information (e.g., "A", "B").
+        config: A dictionary containing user-defined naming preferences.
 
+      Returns:
+        The generated filename.
+      """
 
-def get_chat_name(jdata):
-    global NULL_NAME_COUNTER
-    if jdata.get("name") is None:
-        NULL_NAME_COUNTER += 1
-        return f"UnnamedChat-{NULL_NAME_COUNTER}"
-    return re.sub(r'[\W_]+', u'', jdata.get("name"), flags=re.UNICODE)
+      # Implement custom naming logic based on config
+    base_filename = f"{strain_name}-{type_info}"
+        if quality:
+            base_filename += f"-{quality}"
+        return f"{base_filename}{config['file_extension']}"
 
+def process_message(self, message):
+        if message["type"] != "message":
+            return None
 
-def process_message(message):
-    if message["type"] != "message":
-        return None
+        msg_id = message["id"]
 
-    msg_id = message["id"]
-    sender = message["from"]
-    sender_id = message["from_id"]
-    reply_to_msg_id = message.get("reply_to_message_id", -1)
-    date = message["date"].replace("T", " ")
-    dt = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+        # Check if the message has already been processed
+        if msg_id in self.message_ids:
+            logging.warning(f"Message already processed - {msg_id}")
+            return None
 
-    msg_content = message.get("text", "")
-    msg_type = "text"
+        sender = message["from"]
+        sender_id = message["from_id"]
+        date = message["date"].replace("T", " ")
+        dt = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
 
-    if "media_type" in message:
-        msg_type = message["media_type"]
-        if message["media_type"] == "sticker":
-            if "sticker_emoji" in message:
-                msg_content = message["file"]
+        msg_content = ""
+        msg_type = "text"
+        file_name = ""
+
+        if "text_entities" in message:
+            for entity in message["text_entities"]:
+                if entity["type"] == "plain":
+                    msg_content += entity["text"]
+        elif "text" in message:
+            msg_content = "".join(message["text"])
+
+        msg_content = replace_emoji(msg_content, replace="")
+        msg_content = msg_content.replace("\n", " ")
+        msg_content = msg_content.replace("#", "no_")
+
+        has_strain = re.search(r"•\s*\S+\s*Strain:\s*(.*?)(?:\s*\n|</span>)", msg_content, re.IGNORECASE)
+        has_type = re.search(r"•\s*\S+\s*Type:\s*(.*?)(?:\s*\n|</span>)", msg_content, re.IGNORECASE)
+        has_genetics = re.search(r"Genetics:\s*(.*)", msg_content)
+        has_crosses = re.search(r"•\s*\S+\s*Crosses:\s*(.*?)(?:\s*\n|</span>)", msg_content, re.IGNORECASE)
+        has_flavor = re.search(r"•\s*\S+\s*Flavor:\s*(.*?)(?:\s*\n|</span>)", msg_content, re.IGNORECASE)
+        has_video_coming_soon = re.search(r"VIDEO Coming Soon", msg_content, re.IGNORECASE)
+
+        if has_strain and has_type and has_genetics:
+            strain_name = has_strain.group(1).strip().lower()
+            strain_name = re.sub(r"_\d+", "", strain_name)
+            strain_name = sanitize_filename(strain_name)
+
+            if has_video_coming_soon:
+                strain_name += "-video_coming_soon"
+
+            file_name = f"{strain_name}-(gg)"
+
+            if has_type:
+                quality = has_type.group(1).strip().lower()
+                quality_letters_match = re.search(r"\b(A+)\b", quality)
+                if quality_letters_match:
+                    file_name += f"-{quality_letters_match.group(1).lower()}"
+
+            msg_content = has_genetics.group(1)
+            msg_type = "genetics"
+            crosses_info = ""
+            flavor_info = ""
+            strain_type = has_type.group(1).strip() if has_type else ""
+
+        elif has_type and has_crosses and has_flavor:
+            strain_name_match = re.search(r"(.*?)\s*•\s*\S+\s*Type:", msg_content, re.IGNORECASE)
+            if strain_name_match:
+                strain_name = strain_name_match.group(1).strip().lower()
+                strain_name = re.sub(r"_\d+", "", strain_name)
+                strain_name = sanitize_filename(strain_name)
+                file_name = f"{strain_name}-(gg)"
+
+            msg_type = "strain_info"
+            crosses_info = has_crosses.group(1).strip() if has_crosses else ""
+            flavor_info = has_flavor.group(1).strip() if has_flavor else ""
+            strain_type = has_type.group(1).strip() if has_type else ""
+            genetics_info = ""
+
+        else:
+            return None
+
+        if "photo" in message:
+            original_file_path = message["photo"]
+            original_file_name = os.path.basename(original_file_path)
+            new_path = os.path.join("photos", file_name + os.path.splitext(original_file_name)[1])
+            media_type = "photo"
+            self.photos_found.add(original_file_name)
+
+        elif "file" in message and "file_name" in message:
+            original_file_path = message["file"]
+            original_file_name = message["file_name"]
+            new_path = os.path.join("video_files", file_name + ".mp4")
+            media_type = "video"
+            self.videos_found.add(original_file_name)
+
+        if not ("photo" in message or "file" in message and "file_name" in message):
+            pass
+        else:
+            if (media_type == "photo" and original_file_name in self.photos_renamed) or \
+               (media_type == "video" and original_file_name in self.videos_renamed):
+                logging.warning(f"File already renamed - {original_file_name}")
             else:
-                msg_content = "?"
-        elif message["media_type"] in FILE_TYPES:
-            msg_content = message["file"]
-    elif "file" in message:
-        msg_type = "file"
-        msg_content = message["file"]
+                if os.path.exists(original_file_path):
+                    try:
+                        os.rename(original_file_path, new_path)
+                        if media_type == "photo":
+                            self.photos_renamed.add(original_file_name)
+                        else:
+                            self.videos_renamed.add(original_file_name)
+                        logging.info(f"Renamed {media_type}: {original_file_path} -> {new_path}")
+                        self.message_ids.remove(msg_id)
+                    except FileExistsError:
+                        logging.warning(f"File already exists - {new_path}")
 
-    if "photo" in message:
-        msg_type = "photo"
-        msg_content = message["photo"]
-    elif "poll" in message:
-        msg_type = "poll"
-        msg_content = str(message["poll"]["total_voters"])
-    elif "location_information" in message:
-        msg_type = "location"
-        loc = message["location_information"]
-        msg_content = f"{loc['latitude']},{loc['longitude']}"
+        return {
+            "msg_id": msg_id,
+            "date": date,
+            "msg_type": msg_type,
+            "strain_name": strain_name if strain_name else "",
+            "type": strain_type if strain_type else "",
+            "genetics": genetics_info if genetics_info else "",
+            "crosses": crosses_info if crosses_info else "",
+            "flavor": flavor_info if flavor_info else "",
+        }
 
-    has_mention = 0
-    has_email = 0
-    has_phone = 0
-    has_hashtag = 0
-    is_bot_command = 0
+    def parse_telegram_to_csv(self, jdata, output_folder):
+        os.makedirs(output_folder, exist_ok=True)
 
-    if isinstance(msg_content, list):
-        txt_content = ""
-        for part in msg_content:
-            if isinstance(part, str):
-                txt_content += part
-            elif isinstance(part, dict):
-                if part["type"] == "link":
-                    msg_type = "link"
-                elif part["type"] in MENTION_TYPES:
-                    has_mention = 1
-                elif part["type"] == "email":
-                    has_email = 1
-                elif part["type"] == "phone":
-                    has_phone = 1
-                elif part["type"] == "hashtag":
-                    has_hashtag = 1
-                elif part["type"] == "bot_command":
-                    is_bot_command = 1
+        base_name = os.path.splitext(os.path.basename(sys.argv[1]))[0]
+        output_filepath = os.path.join(output_folder, base_name + ".csv")
 
-                txt_content += part["text"]
-        msg_content = txt_content
+        with open(output_filepath, "w", encoding="utf-8-sig", newline="") as output_file:
+            writer = csv.DictWriter(output_file, COLUMNS, dialect="unix", quoting=csv.QUOTE_NONNUMERIC)
+            writer.writeheader()
 
-    msg_content = msg_content.replace("\n", " ")
+            for message in jdata["messages"]:
+                self.message_ids.add(message['id'])
+                row = self.process_message(message)
+                if row is not None:
+                    writer.writerow(row)
 
-    return {
-        "msg_id": msg_id,
-        "sender": sender,
-        "sender_id": sender_id,
-        "reply_to_msg_id": reply_to_msg_id,
-        "date": date,
-        "msg_type": msg_type,
-        "msg_content": msg_content,
-        "has_mention": has_mention,
-        "has_email": has_email,
-        "has_phone": has_phone,
-        "has_hashtag": has_hashtag,
-        "is_bot_command": is_bot_command,
-    }
+        logging.info(f"CSV file created: {output_filepath}")
+        self.export_files(output_folder)
 
+    def export_files(self, output_folder):
+        with open(os.path.join(output_folder, "photos_found.txt"), "w") as f:
+            for filename in self.photos_found:
+                f.write(f"{filename}\n")
 
-def parse_telegram_to_csv(jdata):
-    chat_name = get_chat_name(jdata)
-    output_filepath = input("Enter the output file path and name: ")
+        with open(os.path.join(output_folder, "photos_renamed.txt"), "w") as f:
+            for filename in self.photos_renamed:
+                f.write(f"{filename}\n")
 
-    with open(output_filepath, "w", encoding="utf-8-sig", newline="") as output_file:
-        writer = csv.DictWriter(output_file, COLUMNS, dialect="unix", quoting=csv.QUOTE_NONNUMERIC)
-        writer.writeheader()
+        with open(os.path.join(output_folder, "videos_found.txt"), "w") as f:
+            for filename in self.videos_found:
+                f.write(f"{filename}\n")
 
-        for message in jdata["messages"]:
-            row = process_message(message)
-            if row is not None:
-                writer.writerow(row)
+        with open(os.path.join(output_folder, "videos_renamed.txt"), "w") as f:
+            for filename in self.videos_renamed:
+                f.write(f"{filename}\n")
 
-    print(chat_name, "OK!")
-
+        with open(os.path.join(output_folder, "message_ids.txt"), "w") as f:
+            for msg_id in self.message_ids:
+                f.write(f"{msg_id}\n")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("ERROR: incorrect number of arguments!")
-        print("How to use it:")
-        print("    python3 telegram-chat-parser.py <chat_history_json>")
-        print("Example:")
-        print("    python3 telegram-chat-parser.py movies_group.json \n Enter the output file path and name: /path/to/output.csv")
-        sys.exit()
+    parser = ArgumentParser(description="Parse a Telegram chat history JSON file into a CSV format.")
+    parser.add_argument("input_file", help="Path to the input chat history JSON file")
+    args = parser.parse_args()
 
-    backup_filepath = sys.argv[1]
+    backup_filepath = args.input_file
+
+    parser_instance = TelegramChatParser()
 
     with open(backup_filepath, "r", encoding="utf-8-sig") as input_file:
         contents = input_file.read()
         jdata = json.loads(contents)
 
         if "chats" not in jdata:
-            parse_telegram_to_csv(jdata)
+            parser_instance.parse_telegram_to_csv(jdata, "parsed")
         else:
             for chat in jdata["chats"]["list"]:
-                parse_telegram_to_csv(chat)
+                parser_instance.parse_telegram_to_csv(chat, "parsed")

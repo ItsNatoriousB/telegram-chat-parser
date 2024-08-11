@@ -27,11 +27,12 @@ _Some property names have changed in the Telegram export_
  - `from_id`: Sender ID - replaced `sender_id`
  - `date`: Message Date
  - `type`: Can be one of the following: `message, custom_emoji, bold, plain, underline, text, sticker, file, photo, poll, location or link`
- - `msg_content`: the text content the message, already cleaned in terms of newline and spaces; if the message was not a text (sticker, media, etc) this field will store the path pointing to the media
+ - `text`: Content of the message - removed newline and spaces; if the message was not a text (sticker, media, etc) this field will store the path pointing to the media
 
  ## OLD Output Format
 
  - ~~`msg_id`: Unique Message ID~~
+ - ~~`msg_content`: the text content the message, already cleaned in terms of newline and spaces; if the message was not a text (sticker, media, etc) this field will store the path pointing to the media~~
  - ~~`sender`: Name of the sender~~
  - ~~`sender_id`: the unique identifier of the sender~~
  - ~~`reply_to_mesg_id`: Stores ID for replies, or -1 otherwise~~
